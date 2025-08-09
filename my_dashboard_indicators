@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>My Crypto Charts + Indicators</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { --bg:#0b0f14; --fg:#e6e9ef; --muted:#9aa4af; --ok:#19c37d; --warn:#f5a623; --bad:#ff4d4f; }
+    body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+    header { padding:16px 20px; font-weight:700; font-size:20px; }
+    section { padding:8px 20px 24px; }
+    h2 { margin:12px 0; font-size:18px; }
+    iframe { width:100%; height:480px; border:0; background:#000; border-radius:8px; }
+    .row { display:grid; grid-template-columns:1fr; gap:18px; }
+    @media (min-width:1100px){ .row { grid-template-columns:1fr 1fr; } }
+    .ind { margin-top:10px; padding:10px 12px; background:#101720; border:1px solid #1a222c; border-radius:8px; display:flex; gap:14px; align-items:center; }
+    .ind .label { color:var(--muted); width:170px; flex:0 0 auto; }
+    .pill { padding:4px 8px; border-radius:999px; border:1px solid #243042; background:#0e141b; }
+    .phase { font-weight:600; }
+    .ok { color:var(--ok); } .warn{color:var(--warn);} .bad{color:var(--bad);}
+    .small { color:var(--muted); font-size:12px; }
+  </style>
+</head>
+<body>
+  <header>My TradingView Dashboard</header>
+
+  <section class="row">
+    <div>
+      <h2>BTC Dominance</h2>
+      <iframe src="https://www.tradingview.com/embed-widget/advanced-chart/?symbol=CRYPTOCAP%3ABTC.D&interval=D&theme=dark&allow_symbol_change=false"></iframe>
+      <div class="ind" id="btc_d_box">
+        <div class="label">BTC Dominance</div>
+        <div><span class="pill" id="btc_d_value">—</span></div>
+        <div class="phase" id="btc_d_phase">Loading…</div>
+      </div>
+    </div>
+
+    <div>
+      <h2>ETH Dominance</h2>
+      <iframe src="https://www.tradingview.com/embed-widget/advanced-chart/?symbol=CRYPTOCAP%3AETH.D&interval=D&theme=dark&allow_symbol_change=false"></iframe>
+      <div class="ind" id="eth_d_box">
+        <div class="label">ETH Dominance</div>
+        <div><span class="pill" id="eth_d_value">—</span></div>
+        <div class="phase" id="eth_d_phase">Loading…</div>
+      </div>
+    </div>
+
+    <div>
+      <h2>TOTAL3 / ETH</h2>
+      <iframe src="https://www.tradingview.com/embed-widget/advanced-chart/?symbol=CRYPTOCAP%3ATOTAL3%2FETH&interval=D&theme=dark&allow_symbol_change=false"></iframe>
+      <div class="ind">
+        <div class="label">TOTAL3 / ETH</div>
+        <div><span class="pill" id="total3_eth_value">—</span></div>
+        <div class="small" id="total3_eth_note">(CoinGecko-based)</div>
+      </div>
+    </div>
+
+    <div>
+      <h2>TOTALE100 / ETH</h2>
+      <iframe src="https://www.tradingview.com/embed-widget/advanced-chart/?symbol=CRYPTOCAP%3ATOTALE100%2FETH&interval=D&theme=dark&allow_symbol_change=false"></iframe>
+      <div class="ind">
+        <div class="label">TOTALE100 / ETH</div>
+        <div><span class="pill" id="e100_eth_value">—</span></div>
+        <div class="small" id="e100_eth_note">(approx)</div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    // ---- CONFIG ----
+    const USE_CMC = false; // set to true to use CoinMarketCap below
+    const CMC_API_KEY = ""; // put your CMC key here if USE_CMC=true
+
+    // Your phase logic for BTC dominance
+    function btcPhase(val){
+      if (val > 60) return {txt:"📈 Phase 1 – BTC King", cls:"ok"};
+      if (val > 55) return {txt:"🔄 Phase 2 – Rotation into ETH / large caps", cls:"ok"};
+      if (val > 50) return {txt:"🚀 Phase 3 – Large–Mid caps – Altseason started", cls:"warn"};
+      if (val > 45) return {txt:"🚀 Phase 4 – Low caps – Altseason raging", cls:"warn"};
+      return {txt:"🚨 Altseason ending – Cash in or die", cls:"bad"};
+    }
+    function ethPhase(val){
+      return val > 16 ? {txt:"🔥 ETH is strong", cls:"ok"} : {txt:"🧊 ETH is weak", cls:"bad"};
+    }
+
+    async function cgGlobal(){
+      const r = await fetch("https://api.coingecko.com/api/v3/global", {headers:{'Accept':'application/json'}});
+      if (!r.ok) throw new Error("CoinGecko global failed");
+      const d = (await r.json()).data;
+      return {
+        btc_d: d.market_cap_percentage.btc,
+        eth_d: d.market_cap_percentage.eth,
+        total_usd: d.total_market_cap.usd
+      };
+    }
+    async function cgEthMcap(){
+      const r = await fetch("https://api.coingecko.com/api/v3/coins/ethereum?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false");
+      if (!r.ok) throw new Error("CoinGecko ETH mcap failed");
+      return (await r.json()).market_data.market_cap.usd;
+    }
+    async function cmcGlobal(){
+      const r = await fetch("https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest", {
+        headers: {"X-CMC_PRO_API_KEY": CMC_API_KEY}
+      });
+      if (!r.ok) throw new Error("CMC global failed");
+      const d = (await r.json()).data;
+      return {
+        btc_d: d.btc_dominance,
+        eth_d: d.eth_dominance ?? null,
+        total_usd: d.quote.USD.total_market_cap
+      };
+    }
+
+    function setText(id, text){ const el = document.getElementById(id); if (el) el.textContent = text; }
+    function setPhase(id, phase){ const el = document.getElementById(id); if (!el) return; el.textContent = phase.txt; el.classList.remove("ok","warn","bad"); el.classList.add(phase.cls); }
+
+    (async () => {
+      try {
+        let g;
+        if (USE_CMC) { g = await cmcGlobal(); } else { g = await cgGlobal(); }
+
+        // if CMC didn't return ETH.d, fall back to CG just for that number
+        if (USE_CMC && (g.eth_d == null)) {
+          try { g.eth_d = (await cgGlobal()).eth_d; } catch {}
+          document.getElementById("eth_d_phase").insertAdjacentHTML("afterend"," <span class='small'>(ETH.d from CG)</span>");
+        }
+
+        const ethMcap = await cgEthMcap(); // mcap needed for ratios
+        const btcMcap = g.total_usd * (g.btc_d / 100);
+        const total3 = g.total_usd - btcMcap - ethMcap;
+        const total3_eth = total3 / ethMcap;
+        const e100 = total3 * 0.7; // rough proxy
+        const e100_eth = e100 / ethMcap;
+
+        // Fill UI
+        setText("btc_d_value", `${g.btc_d.toFixed(2)}%`);
+        setPhase("btc_d_phase", btcPhase(g.btc_d));
+
+        setText("eth_d_value", `${g.eth_d != null ? g.eth_d.toFixed(2) : "—"}%`);
+        setPhase("eth_d_phase", ethPhase(g.eth_d ?? 0));
+
+        setText("total3_eth_value", total3_eth.toFixed(2));
+        setText("e100_eth_value", e100_eth.toFixed(2));
+      } catch (e){
+        console.error(e);
+        document.querySelectorAll(".phase,.pill").forEach(el => el.textContent = "Error loading");
+      }
+    })();
+  </script>
+</body>
+</html>
